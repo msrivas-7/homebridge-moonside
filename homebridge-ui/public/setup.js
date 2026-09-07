@@ -30,7 +30,7 @@ function syncAccent() {
   const color = window.getComputedStyle(probe).backgroundColor;
   probe.remove();
   if (color !== 'rgba(0, 0, 0, 0)') {
-    $('setup').style.setProperty('--setup-accent', color); 
+    $('setup').style.setProperty('--setup-accent', color);
   }
 }
 window.addEventListener('load', syncAccent);
@@ -81,7 +81,7 @@ function renderList(target, list, selected, onChange, prefix) {
     check.checked = selected.has(theme.id);
     check.disabled = !!theme.unavailable && prefix === 'Favorite' && !check.checked;
     if (check.disabled) {
-      label.title = 'This theme cannot be added until it returns to the catalog.'; 
+      label.title = 'This theme cannot be added until it returns to the catalog.';
     }
     check.setAttribute('aria-label', `${prefix} ${theme.name}`);
     check.addEventListener('change', () => {

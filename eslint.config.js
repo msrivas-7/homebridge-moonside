@@ -3,7 +3,7 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**'],
+    ignores: ['dist/**', 'research/**'],
   },
   {
     rules: {
@@ -30,6 +30,9 @@ export default tseslint.config(
       sourceType: 'module',
     },
   },
+  { files: ['homebridge-ui/public/*.js'], languageOptions: { globals: { window: 'readonly', document: 'readonly' } },
+    rules: { '@typescript-eslint/no-use-before-define': ['error', { functions: false, classes: false }] } },
+  { files: ['homebridge-ui/server.js'], languageOptions: { globals: { AbortSignal: 'readonly' } } },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
 );

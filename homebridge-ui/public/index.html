@@ -1,0 +1,122 @@
+<link rel="stylesheet" href="setup.css" />
+<main id="setup" class="theme-setup" aria-label="Moonside theme setup">
+  <header class="mb-4">
+    <div class="small text-muted mb-1">MOONSIDE</div>
+    <h2 class="h4" id="heading" tabindex="-1">Make room for your favorite themes</h2>
+    <p class="text-muted mb-0">Choose a library for Homebridge, then a few favorites for each device in Apple Home.</p>
+  </header>
+  <ol class="setup-steps" aria-label="Setup progress">
+    <li aria-current="step">1. Discover</li>
+    <li>2. Library</li>
+    <li>3. Favorites</li>
+    <li>4. Review</li>
+  </ol>
+  <div id="notice" role="alert" class="alert alert-danger" hidden></div>
+  <div id="account-step">
+    <form id="account-form">
+      <label class="form-label" for="email">Moonside email</label>
+      <input id="email" class="form-control mb-3" type="email" autocomplete="username" required maxlength="320" />
+      <label class="form-label" for="password">Moonside password</label>
+      <div class="input-group mb-2">
+        <input
+          id="password"
+          class="form-control"
+          type="password"
+          autocomplete="current-password"
+          required
+          maxlength="4096"
+        /><button id="reveal" class="btn btn-outline-secondary" type="button" aria-label="Show password" aria-pressed="false">
+          <i class="fas fa-eye" aria-hidden="true"></i>
+        </button>
+      </div>
+      <p class="small text-muted">
+        Use your Moonside app account. Discovery reads your devices and the shared catalog. It does not change any lights.
+      </p>
+      <button id="discover" class="btn btn-primary" type="submit">Discover devices and themes</button>
+      <button id="advanced" class="btn btn-link" type="button">Other plugin settings</button>
+    </form>
+  </div>
+  <section id="library-step" hidden aria-labelledby="library-title">
+    <h3 id="library-title" class="h5">Choose your theme library</h3>
+    <p class="text-muted">
+      Selected themes appear in the Homebridge picker. Removing a theme also removes it from the favorites below.
+    </p>
+    <div class="selection-toolbar">
+      <button id="all" class="btn btn-outline-primary" type="button">Select all themes</button
+      ><button id="clear" class="btn btn-link" type="button">Clear selection</button
+      ><span id="count" class="small" aria-live="polite"></span>
+    </div>
+    <label class="form-check my-3"
+      ><input id="future" class="form-check-input" type="checkbox" /><span class="form-check-label"
+        >Include new catalog themes after each restart</span
+      ></label
+    >
+    <label class="visually-hidden" for="search">Search available themes</label
+    ><input id="search" type="search" class="form-control mb-3" placeholder="Search themes" autocomplete="off" />
+    <div id="theme-list" class="choice-list"></div>
+    <button id="more" type="button" class="btn btn-link" hidden>Show more themes</button>
+    <p class="small text-muted mt-3">
+      Catalog availability does not guarantee an effect works on every lamp model. Saved custom and community themes are not
+      included.
+    </p>
+  </section>
+  <section id="favorites-step" hidden aria-labelledby="favorites-title">
+    <h3 id="favorites-title" class="h5">Choose Apple Home favorites</h3>
+    <p class="text-muted">
+      Each lamp has its own choices. The shared catalog does not report device compatibility. Enable themes only for devices that
+      support them in the Moonside app.
+    </p>
+    <label for="lamp" class="form-label">Device</label
+    ><select id="lamp" class="form-select form-control mb-3"></select>
+    <label class="form-check mb-3"
+      ><input id="device-enabled" type="checkbox" class="form-check-input" /><span class="form-check-label"
+        >Use themes on this device</span
+      ></label
+    >
+    <div id="device-theme-settings" hidden>
+      <label class="form-label" for="device-library">Library for this device</label>
+      <select id="device-library" class="form-control mb-3">
+        <option value="shared">Use the shared library</option>
+        <option value="custom">Choose a smaller library</option>
+      </select>
+      <div id="device-library-list" class="choice-list mb-3" hidden></div>
+      <p id="device-library-hint" class="small text-muted" hidden>
+        Unchecked themes stay available to your other devices. Favorites must belong to this device's library.
+      </p>
+      <div class="selection-toolbar">
+        <span id="favorite-count" aria-live="polite"></span
+        ><button id="favorite-clear" class="btn btn-link" type="button">Clear this lamp's favorites</button>
+      </div>
+      <label class="visually-hidden" for="favorite-search">Search selected themes</label
+      ><input
+        id="favorite-search"
+        type="search"
+        class="form-control mb-3"
+        placeholder="Search selected themes"
+        autocomplete="off"
+      />
+      <div id="favorite-list" class="choice-list"></div>
+      <button id="favorite-more" type="button" class="btn btn-link" hidden>Show more selected themes</button>
+    </div>
+  </section>
+  <section id="review-step" hidden aria-labelledby="review-title">
+    <h3 id="review-title" class="h5">Ready to save</h3>
+    <div id="summary"></div>
+    <p class="small text-muted">
+      Existing manual theme switches and other plugin settings are preserved. Restart Homebridge after saving to apply these
+      choices. Saving does not change a lamp's power, color or theme.
+    </p>
+  </section>
+  <footer id="navigation" class="setup-footer" hidden>
+    <button id="back" type="button" class="btn btn-outline-secondary">Back</button
+    ><button id="next" type="button" class="btn btn-primary">Choose favorites</button>
+  </footer>
+  <section id="finished" class="alert alert-success" role="status" hidden>
+    <h3 class="h5">Theme setup saved</h3>
+    <p>
+      Restart Homebridge when convenient to apply your choices. Then open a lamp's controls in Accessories to browse its themes.
+    </p>
+    <button id="done" class="btn btn-outline-success" type="button">Done</button>
+  </section>
+</main>
+<script type="module" src="setup.js"></script>

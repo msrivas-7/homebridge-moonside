@@ -103,10 +103,11 @@ export class MoonsideApiClient {
     return body;
   }
 
-  async fetchDevices(): Promise<Map<string, DeviceState>> {
-    await this.ensureAuthenticated();
+  async fetchDevices(signal: AbortSignal = AbortSignal.timeout(15000)): Promise<Map<string, DeviceState>> {
+    await this.ensureAuthenticated(signal);
+    signal.throwIfAborted();
     const url = this.buildDevicesUrl();
-    const response = await fetch(url);
+    const response = await fetch(url, { signal });
 
     if (!response.ok) {
       const details = await response.text();
@@ -118,8 +119,11 @@ export class MoonsideApiClient {
     return new Map(entries);
   }
 
-  async fetchThemeLibrary(): Promise<Map<string, ThemeDefinition>> {
-    await this.ensureAuthenticated();
+  async fetchThemeLibrary(
+    signal: AbortSignal = AbortSignal.timeout(15000), options: { qualifiedLabels?: boolean } = {},
+  ): Promise<Map<string, ThemeDefinition>> {
+    await this.ensureAuthenticated(signal);
+    signal.throwIfAborted();
     const body = {
       structuredQuery: {
         from: [
@@ -133,6 +137,7 @@ export class MoonsideApiClient {
 
     const response = await fetch(`${FIRESTORE_RUNQUERY_URL}?key=${this.apiKey}`, {
       method: 'POST',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.idToken}`,
@@ -200,7 +205,7 @@ export class MoonsideApiClient {
       const command = definition.controlData.split('.')[1];
       const identity = createHash('sha256').update(path).digest('hex');
       const name = `${definition.name} - ${command} [theme:${identity}]`;
-      themes.set(name.toLowerCase(), { ...definition, name });
+      themes.set(name.toLowerCase(), { ...definition, name: options.qualifiedLabels === false ? definition.name : name });
     }
     return themes;
   }

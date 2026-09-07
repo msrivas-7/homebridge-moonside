@@ -61,7 +61,7 @@ export class FavoriteThemeAccessory {
     }
     this.themes = next;
     for (const [id, service] of this.services) {
-      if (!next.has(id)) {
+      if (!favorites.has(id)) {
         this.accessory.removeService(service);
         this.services.delete(id);
       }

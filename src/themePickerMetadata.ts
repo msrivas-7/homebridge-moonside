@@ -9,7 +9,7 @@ export function setThemePickerMetadata(
   platform: MoonsideCloudPlatform, service: Service, deviceId: string, themeId?: string, role: 'action' | 'favorite' = 'action',
 ) {
   const existing = service.characteristics.find(item => item.UUID === THEME_PICKER_UUID);
-  if (!platform.config?.themePicker || !deviceId || ['null', 'undefined'].includes(deviceId)) {
+  if (!platform.config?.themePicker || platform.themesEnabledFor?.(deviceId) === false || !deviceId || ['null', 'undefined'].includes(deviceId)) {
     if (existing) {
       service.removeCharacteristic(existing);
     }

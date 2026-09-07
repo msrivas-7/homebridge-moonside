@@ -32,7 +32,9 @@
     "watch": "npm run build && npm link && nodemon",
     "test": "npm run build && node --test test/*.test.mjs"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@homebridge/plugin-ui-utils": "^2.2.6"
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/node": "^24.10.1",

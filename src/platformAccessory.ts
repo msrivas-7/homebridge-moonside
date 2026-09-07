@@ -67,7 +67,7 @@ export class MoonsideLampAccessory {
         });
       }
     }
-    if (!this.platform.config.themePicker) {
+    if (!this.platform.config.themePicker || this.platform.themesEnabledFor?.(this.device.deviceId) === false) {
       for (const characteristic of [...this.service.characteristics]) {
         if ([THEME_FAVORITES_UUID, THEME_CATALOG_UUID, THEME_SELECTION_UUID].includes(characteristic.UUID)) {
           this.service.removeCharacteristic(characteristic);

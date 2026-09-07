@@ -2,10 +2,10 @@
 
 Fixes #4
 
-Different theme documents can have the same title. Indexing by title drops entries and makes some themes impossible to select.
+Different theme documents can share a title or a leaf ID. Indexing by either drops records and makes some themes impossible to select.
 
-Keep records by document ID, normalize whitespace and add names containing the command and document ID. Keep those names when another record disappears. Existing bare names retain their previous lookup behavior. Selecting two names for one document creates only one service.
+Keep records by full document path and give each a qualified name with a stable path hash. Reserve that suffix so another title cannot take over a saved selection. Ordinary bare names keep their previous lookup behavior, and selecting two names for one record creates one service. Root collection service IDs stay unchanged; descendant records use their full path.
 
-Verified: four tests pass on Node 20, 22 and 24 and fail on the original source. They cover duplicate titles, name collisions, reordered responses, catalog removal, duplicate selections and whitespace. Build and lint pass. Update the existing CI job to run these tests.
+Verified: six offline tests pass on Node 20, 22 and 24. They cover duplicate titles and IDs, case differences, catalog reordering and removal, colliding titles, duplicate selections and whitespace. The two new review regressions fail before the fix. Build and lint pass. The existing CI job now runs the tests.
 
 Happy to adjust the approach based on feedback.

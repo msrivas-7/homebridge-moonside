@@ -40,7 +40,10 @@ test('cached themes retain service and characteristic IDs across startup, then r
     assert.deepEqual(ids(accessory, cache), baseline, 'startup must not expire cached theme IDs');
     await assert.rejects(outlets(accessory)[0].getCharacteristic(Characteristic.On).handleSetRequest(true),
       error => error === hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    const setters = outlets(accessory).map(service => t.mock.method(service.getCharacteristic(Characteristic.On), 'onSet'));
     restored.updateThemes(themes);
+    restored.updateThemes(themes);
+    assert.ok(setters.every(setter => setter.mock.callCount() === 0), 'restored services must retain their setters');
     assert.deepEqual(ids(accessory, cache), baseline);
     for (const service of outlets(accessory)) {
       await service.getCharacteristic(Characteristic.On).handleSetRequest(true);
@@ -61,8 +64,10 @@ test('refreshing a theme updates its command without replacing its service; an e
   const accessory = new Accessory('Lamp Themes', uuid.generate('refresh-test'));
   const handler = new ThemeSwitchAccessory(platform, accessory, device, themes);
   const original = outlets(accessory)[0];
+  const setter = t.mock.method(original.getCharacteristic(Characteristic.On), 'onSet');
   handler.updateThemes([{ ...themes[0], name: 'Renamed Ocean', controlData: 'THEME.THEME1.9,' }]);
   assert.equal(outlets(accessory)[0], original);
+  assert.equal(setter.mock.callCount(), 0, 'refresh must reuse the setter and read the current command');
   await original.getCharacteristic(Characteristic.On).handleSetRequest(true);
   assert.deepEqual(commands, [[device.deviceId, 'THEME.THEME1.9,']]);
   handler.updateThemes([]);

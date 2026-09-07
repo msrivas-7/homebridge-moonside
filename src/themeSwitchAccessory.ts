@@ -67,9 +67,9 @@ export class ThemeSwitchAccessory {
       if (!service) {
         service = this.accessory.addService(this.platform.Service.Outlet, theme.name, theme.id);
         this.services.set(theme.id, service);
+        this.bindThemeService(theme.id, service);
       }
 
-      this.bindThemeService(theme.id, service);
       this.applyServiceName(service, theme.name);
       service.updateCharacteristic(this.platform.Characteristic.On, false);
       service.updateCharacteristic(this.platform.Characteristic.OutletInUse, false);

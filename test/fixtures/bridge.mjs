@@ -52,8 +52,15 @@ const platform = new MoonsideCloudPlatform(logger, config, {
   updatePlatformAccessories() {},
 });
 platform.apiClient.sendControl = async (deviceId, command) => {
-  if (!['fixture-A', 'fixture-B', 'fixture-E'].includes(deviceId)) {
+  if (!['fixture-A', 'fixture-B', 'fixture-E'].includes(deviceId) && !/^stress-\d{2}$/.test(deviceId)) {
     throw new Error('Not a simulated lamp');
+  }
+  const flags = JSON.parse(readFileSync(`${directory}/faults.json`, 'utf8'));
+  if (flags.controlDelayMs) {
+    await new Promise(resolve => globalThis.setTimeout(resolve, Math.min(1000, flags.controlDelayMs)));
+  }
+  if (flags.controlFailure) {
+    throw new Error('Simulated control failure');
   }
   appendFileSync(`${directory}/commands.jsonl`, JSON.stringify({ deviceId, command }) + '\n');
   return { controlData: command };
@@ -92,3 +99,11 @@ process.on('SIGTERM', async () => {
   process.exit(0);
 });
 process.stdout.write('Simulated onboarding bridge: 127.0.0.1:18801\n');
+
+// Optional diagnostics for this isolated process only. Never added to the plugin runtime.
+process.on('SIGUSR2', () => {
+  if (typeof globalThis.gc === 'function') {
+    globalThis.gc();
+  }
+  appendFileSync(`${directory}/stress-memory.jsonl`, JSON.stringify({ at: Date.now(), ...process.memoryUsage() }) + '\n');
+});

@@ -37,7 +37,7 @@ export function catalog() {
   ];
   const names = [
     ...records,
-    ...Array.from({ length: (f.large ? 1001 : 79) - records.length }, (_, i) => `Theme ${String(i + 8).padStart(3, '0')}`),
+    ...Array.from({ length: (f.large ? 1001 : (f.catalogSize ?? 79)) - records.length }, (_, i) => `Theme ${String(i + 8).padStart(3, '0')}`),
   ];
   return names.map((name, i) => document(`theme-${i}`, name)).filter((_, i) => !(f.remove ?? []).includes(i));
 }
@@ -104,6 +104,10 @@ globalThis.fetch = async (input, options = {}) => {
               'fixture-E': { deviceName: 'Accent lamp', deviceModel: 'Different lighting model' },
             }
             : {}),
+          ...(f.stressDevices ? Object.fromEntries(Array.from({ length: f.stressDevices }, (_, i) => [
+            `stress-${String(i + 1).padStart(2, '0')}`,
+            { deviceName: `Stress Lamp ${String(i + 1).padStart(2, '0')}`, deviceModel: i % 2 ? 'Halo' : 'Other lamp' },
+          ])) : {}),
           null: {},
         }).filter(([id]) => !(f.missingDevices ?? []).includes(id))),
     );

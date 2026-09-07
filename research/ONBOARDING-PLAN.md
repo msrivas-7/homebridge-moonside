@@ -42,3 +42,19 @@ Screenshots and browser notes are held outside this package. The mobile form had
 Limits: this does not establish real API compatibility for arbitrary models, retrieve account custom/community themes, or add non-lighting accessory support. No real device was contacted or live installation changed. The fixture retains cached devices to exercise identity recovery; it does not prove how every real account deletion event behaves. The shared catalog API and authentication behavior remain vendor dependencies.
 
 Dark mode was used throughout the main browser matrix. The final light-mode pass covered discovery, library selection, the disabled-device view and review on desktop and mobile. Dark mode and normal viewport sizing were restored afterward.
+
+## Larger account stress pass
+
+The follow-up used 500 catalog themes and 12 enabled simulated lamps, plus five mixed device records. The lamps had 3,400 selected library entries and initially 736 favorites. The actual settings UI saved edits to two lamps and restored all 737 resulting favorites after a simulated bridge restart.
+
+Two regressions were found and fixed. Clearing the shared library now also clears custom device libraries. Favorite refreshes no longer append duplicate optional name characteristics, and existing cached duplicates are compacted without changing published identities. Both fixes have regression tests. Build, lint and all 61 tests pass.
+
+Each protocol stress cycle performs 50 complete accessory reads, 240 competing favorite saves, 312 successful membership edits and 1,200 routed theme commands. Only one competing save per device succeeds; 228 stale saves are rejected. A slow transport burst accepts 96 writes and rejects 288 excess writes with resource-busy status. All 12 lamps recover after simulated transport failures. An ambiguous request that turns on every favorite is rejected without issuing a command. Accessory, service and characteristic identities remain stable. The final cycle passed with 737 favorites.
+
+Before the metadata fix, retained heap grew by about 7 MiB per repeated cycle even after garbage collection. After the fix, five identical cycles performed 6,000 commands and 1,560 membership edits; post-GC heap readings were 23.27, 22.80, 22.81, 22.87 and 22.92 MiB. These are bounded local measurements, not a multi-day endurance result. RSS includes allocator retention and is not the same as live heap.
+
+Browser checks covered catalog pagination and the last entry, independent device favorites, the 99-favorite limit, repeated checkbox changes, clearing large custom libraries, save/reopen/restart, and a narrow layout with no horizontal overflow. Model-level tests separately exercise 1,000 themes, 100 device profiles and 9,900 favorites. This is not a claim that 100 lamps plus their favorite accessories fit on one HomeKit bridge.
+
+An exploratory burst of 384 independent concurrent connections produced a connection reset. The bridge remained available, but the transport limit was not diagnosed. The repeatable burst uses 32 connections carrying 12 characteristic writes each. No claim is made that arbitrary connection floods, actual cloud latency or vendor rate limits have been validated.
+
+The dedicated fixture binds to loopback, suppresses discovery advertising and uses synthetic account data. No live installation or real device was changed. The hostile-name fixture produces expected HAP name warnings; this pass does not establish Apple Home pairing for those deliberately invalid labels.

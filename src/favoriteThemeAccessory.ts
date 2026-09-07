@@ -76,7 +76,6 @@ export class FavoriteThemeAccessory {
       setThemePickerMetadata(this.platform, service, this.device.deviceId, theme.id, 'favorite');
       service.displayName = theme.name;
       service.setCharacteristic(this.platform.Characteristic.Name, theme.name);
-      service.addOptionalCharacteristic(this.platform.Characteristic.ConfiguredName);
       service.setCharacteristic(this.platform.Characteristic.ConfiguredName, theme.name);
     }
     this.setActiveTheme(this.active && next.has(this.active) ? this.active : undefined);
@@ -90,6 +89,13 @@ export class FavoriteThemeAccessory {
   }
 
   private bind(id: string, service: Service) {
+    // Older caches may contain one optional entry per refresh. Keep one per type.
+    service.optionalCharacteristics = [...new Map(service.optionalCharacteristics.map(item => [item.UUID, item])).values()];
+    const configuredName = this.platform.Characteristic.ConfiguredName;
+    if (!service.testCharacteristic(configuredName)
+      && !service.optionalCharacteristics.some(item => item.UUID === configuredName.UUID)) {
+      service.addOptionalCharacteristic(configuredName);
+    }
     service.getCharacteristic(this.platform.Characteristic.On)
       .onGet(() => this.active === id)
       .onSet(value => {

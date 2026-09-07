@@ -43,7 +43,7 @@ test('catalog normalizes whitespace, retains duplicate titles, avoids generated-
 test('selecting both a bare name and a qualified alias creates only one theme service per document', async () => {
   const platform = new MoonsideCloudPlatform(logger,
     { platform: 'MoonsideCloud', email: 'test@example.invalid', password: 'synthetic',
-      themeSwitches: ['  Blue   Raspberry ', 'Blue Raspberry - THEME1'] },
+      themeSwitches: ['Blue Raspberry', 'Blue Raspberry - THEME1'] },
     { hap, on() {} });
   platform.apiClient = { async fetchThemeLibrary() {
     return new Map([['blue raspberry', themes[0]], ['blue raspberry - theme1', themes[0]]]);
@@ -58,6 +58,7 @@ test('removing a same-command catalog record cannot retarget the remaining quali
   client.ensureAuthenticated = async () => {};
   const before = await client.fetchThemeLibrary();
   const selectedNames = [...before].filter(([name]) => name !== 'blue raspberry');
+  assert.equal(selectedNames.length, 2);
   payload = [document('b', 'Blue Raspberry')];
   const after = await client.fetchThemeLibrary();
   for (const [name, definition] of selectedNames) {
@@ -67,4 +68,14 @@ test('removing a same-command catalog record cannot retarget the remaining quali
       assert.equal(after.get(name), undefined, 'a removed document must not resolve to a different document');
     }
   }
+});
+
+test('configured theme names use the same whitespace normalization as catalog names', async () => {
+  const platform = new MoonsideCloudPlatform(logger,
+    { platform: 'MoonsideCloud', email: 'test@example.invalid', password: 'synthetic', themeSwitches: ['  Blue   Raspberry  '] },
+    { hap, on() {} });
+  platform.apiClient = { async fetchThemeLibrary() {
+    return new Map([['blue raspberry', themes[0]]]);
+  } };
+  assert.deepEqual(await platform.resolveThemeDefinitions(), [themes[0]]);
 });

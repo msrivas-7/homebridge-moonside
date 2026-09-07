@@ -58,6 +58,7 @@ export class SetupDraft {
   clear() {
     this.mode = 'selected';
     this.selected.clear();
+    this.libraries.forEach((library) => library?.clear());
     this.favorites.forEach((favorites) => favorites.clear());
   }
   favorite(lampId, id, enabled) {

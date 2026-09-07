@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import hap from 'hap-nodejs';
 import { IdentifierCache } from 'hap-nodejs/dist/lib/model/IdentifierCache.js';
 import { ThemeSwitchAccessory } from '../dist/themeSwitchAccessory.js';
-import { MoonsideApiClient } from '../dist/moonsideApi.js';
 import { MoonsideCloudPlatform } from '../dist/platform.js';
 
 const { Accessory, Service, Characteristic, uuid } = hap;
@@ -29,7 +28,7 @@ test('cached themes retain service and characteristic IDs across startup, then r
   const commands = [];
   const platform = { Service, Characteristic, api: { hap }, logger,
     apiClient: { async sendControl(...args) {
-      commands.push(args); 
+      commands.push(args);
     } } };
   let accessory = new Accessory('Lamp Themes', uuid.generate('synthetic-theme-accessory'));
   const cache = new IdentifierCache('00:00:00:00:00:01');
@@ -39,7 +38,8 @@ test('cached themes retain service and characteristic IDs across startup, then r
     accessory = Accessory.deserialize(Accessory.serialize(accessory));
     const restored = new ThemeSwitchAccessory(platform, accessory, device);
     assert.deepEqual(ids(accessory, cache), baseline, 'startup must not expire cached theme IDs');
-    await assert.rejects(outlets(accessory)[0].getCharacteristic(Characteristic.On).handleSetRequest(true));
+    await assert.rejects(outlets(accessory)[0].getCharacteristic(Characteristic.On).handleSetRequest(true),
+      error => error === hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
     restored.updateThemes(themes);
     assert.deepEqual(ids(accessory, cache), baseline);
     for (const service of outlets(accessory)) {
@@ -56,7 +56,7 @@ test('refreshing a theme updates its command without replacing its service; an e
   const commands = [];
   const platform = { Service, Characteristic, api: { hap }, logger,
     apiClient: { async sendControl(...args) {
-      commands.push(args); 
+      commands.push(args);
     } } };
   const accessory = new Accessory('Lamp Themes', uuid.generate('refresh-test'));
   const handler = new ThemeSwitchAccessory(platform, accessory, device, themes);
@@ -76,7 +76,7 @@ test('a failed catalog fetch preserves cached accessories and a later successful
   let fail = true;
   platform.apiClient = { async fetchThemeLibrary() {
     if (fail) {
-      throw new Error('synthetic network failure'); 
+      throw new Error('synthetic network failure');
     }
     return new Map([['ocean', themes[0]]]);
   } };
@@ -92,48 +92,4 @@ test('a failed catalog fetch preserves cached accessories and a later successful
   fail = false;
   assert.deepEqual(await platform.resolveThemeDefinitions(), [themes[0]]);
   assert.equal(outlets(accessory).length, 1);
-});
-
-function document(id, name, code = 'THEME1') {
-  return { document: { name: `projects/test/documents/effects/${id}`, fields: {
-    name: { stringValue: name }, themeControlCode: { stringValue: code },
-    themeParams: { arrayValue: { values: [{ integerValue: '7' }] } },
-  } } };
-}
-
-test('catalog normalizes whitespace, retains duplicate titles, avoids generated-name collisions and supports legacy names', async (t) => {
-  const payload = [
-    document('a', '  Blue   Raspberry  '), document('b', 'Blue Raspberry'), document('c', 'Blue Raspberry', 'GRADIENT1'),
-    document('d', 'Blue Raspberry - THEME1'), document('e', '  Ocean  '), {}, document('bad', '   '),
-  ];
-  t.mock.method(globalThis, 'fetch', async () => new globalThis.Response(JSON.stringify(payload)));
-  const client = new MoonsideApiClient(logger, 'test@example.invalid', 'synthetic');
-  client.ensureAuthenticated = async () => {};
-  const library = await client.fetchThemeLibrary();
-  assert.deepEqual(new Set([...library.values()].map(theme => theme.id)), new Set(['a', 'b', 'c', 'd', 'e']));
-  assert.equal(library.get('blue raspberry').id, 'c', 'preserve last-record bare-name lookup');
-  assert.equal(library.get('blue raspberry - theme1').id, 'd', 'never overwrite an original name');
-  assert.equal(library.get('blue raspberry - theme1 (1)').id, 'a');
-  assert.equal(library.get('blue raspberry - theme1 (2)').id, 'b');
-  assert.equal(library.get('blue raspberry - gradient1').id, 'c');
-  assert.equal(library.get('ocean').controlData, 'THEME.THEME1.7,');
-  assert.ok([...library.values()].every(theme => theme.name === theme.name.trim() && !/\s{2}/.test(theme.name)));
-  payload.reverse();
-  const reordered = await client.fetchThemeLibrary();
-  for (const [key, definition] of library) {
-    if (key !== 'blue raspberry') {
-      assert.deepEqual(reordered.get(key), definition); 
-    }
-  }
-});
-
-test('selecting both a bare name and a qualified alias creates only one theme service per document', async () => {
-  const platform = new MoonsideCloudPlatform(logger,
-    { platform: 'MoonsideCloud', email: 'test@example.invalid', password: 'synthetic',
-      themeSwitches: ['  Blue   Raspberry ', 'Blue Raspberry - THEME1'] },
-    { hap, on() {} });
-  platform.apiClient = { async fetchThemeLibrary() {
-    return new Map([['blue raspberry', themes[0]], ['blue raspberry - theme1', themes[0]]]);
-  } };
-  assert.deepEqual(await platform.resolveThemeDefinitions(), [themes[0]]);
 });

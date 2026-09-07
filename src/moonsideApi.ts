@@ -175,26 +175,22 @@ export class MoonsideApiClient {
     }
 
     const themes = new Map<string, ThemeDefinition>();
-    // Reserve every original name so generated labels cannot overwrite real names.
-    const usedNames = new Set(groups.keys());
+    // Preserve existing bare-name lookups, including the last-record rule.
     for (const [key, group] of groups) {
-      if (group.length === 1) {
-        themes.set(key, group[0]);
-        continue;
-      }
-      for (const definition of [...group].sort((a, b) => a.id.localeCompare(b.id))) {
-        const command = definition.controlData.split('.')[1];
-        const base = `${definition.name} - ${command}`;
-        let name = base;
-        let suffix = 1;
-        while (usedNames.has(name.toLowerCase())) {
-          name = `${base} (${suffix++})`;
-        }
-        usedNames.add(name.toLowerCase());
-        themes.set(name.toLowerCase(), { ...definition, name });
-      }
-      // Existing configurations used the last record returned for a bare name.
       themes.set(key, group[group.length - 1]);
+    }
+
+    // Qualify by document ID, not a position that can change when another
+    // record disappears. Keep these aliases even when a title becomes unique.
+    const usedNames = new Set(groups.keys());
+    for (const definition of [...definitions.values()].sort((a, b) => a.id.localeCompare(b.id))) {
+      const command = definition.controlData.split('.')[1];
+      let name = `${definition.name} - ${command} (${definition.id})`;
+      while (usedNames.has(name.toLowerCase())) {
+        name += ` (${definition.id})`;
+      }
+      usedNames.add(name.toLowerCase());
+      themes.set(name.toLowerCase(), { ...definition, name });
     }
     return themes;
   }

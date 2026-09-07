@@ -141,7 +141,7 @@ export class MoonsideApiClient {
     }
 
     const payload = await response.json() as Array<{ document?: { name: string; fields?: Record<string, FirestoreField> } }>;
-    const themes = new Map<string, ThemeDefinition>();
+    const definitions = new Map<string, ThemeDefinition>();
 
     for (const entry of payload) {
       const doc = entry.document;
@@ -159,14 +159,43 @@ export class MoonsideApiClient {
       const controlData = this.buildThemeCommand(commandField.stringValue, params);
       const id = doc.name?.split('/').pop() ?? nameField.stringValue;
 
-      const def: ThemeDefinition = {
-        id,
-        name: nameField.stringValue,
-        controlData,
-      };
-      themes.set(nameField.stringValue.toLowerCase(), def);
+      const name = nameField.stringValue.trim().replace(/\s+/g, ' ');
+      if (!id || !name) {
+        continue;
+      }
+      definitions.set(id, { id, name, controlData });
     }
 
+    const groups = new Map<string, ThemeDefinition[]>();
+    for (const definition of definitions.values()) {
+      const key = definition.name.toLowerCase();
+      const group = groups.get(key) ?? [];
+      group.push(definition);
+      groups.set(key, group);
+    }
+
+    const themes = new Map<string, ThemeDefinition>();
+    // Reserve every original name so generated labels cannot overwrite real names.
+    const usedNames = new Set(groups.keys());
+    for (const [key, group] of groups) {
+      if (group.length === 1) {
+        themes.set(key, group[0]);
+        continue;
+      }
+      for (const definition of [...group].sort((a, b) => a.id.localeCompare(b.id))) {
+        const command = definition.controlData.split('.')[1];
+        const base = `${definition.name} - ${command}`;
+        let name = base;
+        let suffix = 1;
+        while (usedNames.has(name.toLowerCase())) {
+          name = `${base} (${suffix++})`;
+        }
+        usedNames.add(name.toLowerCase());
+        themes.set(name.toLowerCase(), { ...definition, name });
+      }
+      // Existing configurations used the last record returned for a bare name.
+      themes.set(key, group[group.length - 1]);
+    }
     return themes;
   }
 

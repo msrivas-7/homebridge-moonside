@@ -11,7 +11,7 @@ export class ThemeSwitchAccessory {
     private readonly platform: MoonsideCloudPlatform,
     private readonly accessory: PlatformAccessory,
     private device: MoonsideDeviceConfig,
-    initialThemes: ThemeDefinition[],
+    initialThemes?: ThemeDefinition[],
   ) {
     this.accessory.category = this.platform.api.hap.Categories.OUTLET;
 
@@ -22,7 +22,9 @@ export class ThemeSwitchAccessory {
 
     this.updateAccessoryName();
     this.rehydrateExistingServiceMap();
-    this.updateThemes(initialThemes);
+    if (initialThemes !== undefined) {
+      this.updateThemes(initialThemes);
+    }
   }
 
   updateDevice(device: MoonsideDeviceConfig) {
@@ -39,6 +41,7 @@ export class ThemeSwitchAccessory {
       const subtype = service.subtype;
       if (subtype) {
         this.services.set(subtype, service);
+        this.bindThemeService(subtype, service);
         service.updateCharacteristic(this.platform.Characteristic.On, false);
         service.updateCharacteristic(this.platform.Characteristic.OutletInUse, false);
       }
@@ -63,17 +66,27 @@ export class ThemeSwitchAccessory {
       let service = this.services.get(theme.id);
       if (!service) {
         service = this.accessory.addService(this.platform.Service.Outlet, theme.name, theme.id);
-        service.getCharacteristic(this.platform.Characteristic.On)
-          .onSet(value => this.handleThemeSet(theme, service!, value));
         this.services.set(theme.id, service);
-      } else {
-        // reconfigure existing service
       }
 
+      this.bindThemeService(theme.id, service);
       this.applyServiceName(service, theme.name);
       service.updateCharacteristic(this.platform.Characteristic.On, false);
       service.updateCharacteristic(this.platform.Characteristic.OutletInUse, false);
     }
+  }
+
+  private bindThemeService(id: string, service: Service) {
+    service.getCharacteristic(this.platform.Characteristic.On).onSet(value => {
+      const theme = this.themes.find(definition => definition.id === id);
+      if (!theme) {
+        if (value) {
+          throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        return;
+      }
+      return this.handleThemeSet(theme, service, value);
+    });
   }
 
   public destroy() {

@@ -1,5 +1,11 @@
+import { ThemeCatalogControl } from './themeCatalogControl.js';
+import { join } from 'node:path';
+import { FavoriteThemeAccessory, themeFavoriteId } from './favoriteThemeAccessory.js';
+import { ThemeFavoritesControl } from './themeFavoritesControl.js';
+import { ThemeFavoritesStore } from './themeFavoritesStore.js';
 import type { API, Characteristic, DynamicPlatformPlugin, Logging, PlatformAccessory, PlatformConfig, Service } from 'homebridge';
 
+import { isValidDeviceId } from './deviceIdentity.js';
 import { MoonsideLampAccessory } from './platformAccessory.js';
 import { ThemeSwitchAccessory } from './themeSwitchAccessory.js';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
@@ -11,11 +17,6 @@ export interface MoonsideDeviceConfig {
   name: string;
 }
 
-export interface MoonsideDeviceConfig {
-  name: string;
-  deviceId: string;
-}
-
 export interface MoonsidePlatformConfig extends PlatformConfig {
   email: string;
   password: string;
@@ -24,6 +25,8 @@ export interface MoonsidePlatformConfig extends PlatformConfig {
   firebaseApiKey?: string;
   logLevel?: PluginLogLevel;
   themeSwitches?: string[];
+  themePicker?: boolean;
+  retainLegacyThemeSwitches?: boolean;
 }
 
 /**
@@ -46,6 +49,15 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
   private readonly accessoriesByDeviceId: Map<string, MoonsideLampAccessory> = new Map();
   private readonly themeAccessories: Map<string, ThemeSwitchAccessory> = new Map();
   private readonly themeSwitchNames: string[];
+  private favoriteAccessories = new Map<string, FavoriteThemeAccessory>();
+  private favoriteControls = new Map<string, ThemeFavoritesControl>();
+  private configuredThemes = new Map<string, ThemeDefinition[]>();
+  private favoriteStore?: ThemeFavoritesStore;
+  private catalogs = new Map<string, ThemeCatalogControl>();
+  private favoriteSnapshots = new Map<string, string>();
+  private controlQueue = new Map<string, Promise<void>>();
+  private pendingControls = new Map<string, number>();
+  private lastTheme = new Map<string, string>();
   private streamUnsubscribe?: () => void;
   private themeDefinitionsCache?: ThemeDefinition[];
 
@@ -54,6 +66,9 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     public readonly config: MoonsidePlatformConfig,
     public readonly api: API,
   ) {
+    if (config.themePicker) {
+      this.favoriteStore = new ThemeFavoritesStore(join(api.user.storagePath(), 'moonside-theme-favorites'));
+    }
     this.Service = api.hap.Service;
     this.Characteristic = api.hap.Characteristic;
     this.logger = new PluginLogger(log, this.resolveLogLevel(config.logLevel));
@@ -82,11 +97,27 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     // to start discovery of new accessories.
     this.api.on('didFinishLaunching', () => {
       this.logger.debug('Executed didFinishLaunching callback');
+      if (!this.config.themePicker) {
+        for (const accessory of this.accessories.values()) {
+          if (accessory.context?.isFavoriteThemeAccessory) {
+            this.removeFavoriteAccessory(accessory.context.device.deviceId);
+          }
+        }
+      }
       void this.discoverDevices();
     });
 
     this.api.on('shutdown', () => {
       this.streamUnsubscribe?.();
+      for (const catalog of this.catalogs.values()) {
+        catalog.destroy();
+      }
+      for (const handler of this.favoriteAccessories.values()) {
+        handler.destroy();
+      }
+      for (const control of this.favoriteControls.values()) {
+        control.destroy();
+      }
     });
   }
 
@@ -97,7 +128,12 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
   configureAccessory(accessory: PlatformAccessory) {
     this.logger.debug('Loading accessory from cache: %s', accessory.displayName);
 
-    if (accessory.context?.isThemeAccessory && accessory.context.device?.deviceId) {
+    if (accessory.context?.isFavoriteThemeAccessory && isValidDeviceId(accessory.context.device?.deviceId)) {
+      const device = accessory.context.device as MoonsideDeviceConfig;
+      this.favoriteAccessories.set(device.deviceId, new FavoriteThemeAccessory(this, accessory, device));
+    }
+
+    if (accessory.context?.isThemeAccessory && isValidDeviceId(accessory.context.device?.deviceId)) {
       const device: MoonsideDeviceConfig = {
         deviceId: accessory.context.device.deviceId,
         name: accessory.context.device.name ?? accessory.displayName.replace(/ - Themes$/, ''),
@@ -163,6 +199,13 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     this.accessories.delete(accessory.UUID);
     this.accessoriesByDeviceId.delete(deviceId);
     this.removeThemeAccessory(deviceId);
+    this.favoriteControls.get(deviceId)?.destroy();
+    this.favoriteControls.delete(deviceId);
+    this.configuredThemes.delete(deviceId);
+    this.lastTheme.delete(deviceId);
+    this.catalogs.get(deviceId)?.destroy();
+    this.catalogs.delete(deviceId);
+    this.removeFavoriteAccessory(deviceId);
   }
 
   private async startRealtimeStream(skipInitialRefresh = false) {
@@ -174,6 +217,9 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
 
     this.streamUnsubscribe?.();
     this.streamUnsubscribe = await this.apiClient.subscribeToDeviceUpdates(async (deviceId, update) => {
+      if (!isValidDeviceId(deviceId)) {
+        return;
+      }
       if (update === null) {
         const uuid = this.api.hap.uuid.generate(deviceId);
         const accessory = this.accessories.get(uuid);
@@ -210,7 +256,7 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     const seenDeviceIds: string[] = [];
 
     for (const [deviceId, state] of devices.entries()) {
-      if (!state) {
+      if (!state || !isValidDeviceId(deviceId)) {
         continue;
       }
       const deviceName = await this.registerOrUpdateAccessory(deviceId, state);
@@ -240,9 +286,18 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     if (themes === undefined) {
       return;
     }
+    try {
+      await this.syncFavoriteControls(deviceId, deviceName, themes);
+    } catch (error) {
+      // Keep ordinary controls, cached favorites and other lamps available while settings recover.
+      this.logger.error('Failed to update theme favorites for %s: %s', deviceName,
+        error instanceof Error ? error.message : String(error));
+    }
     const uuid = this.api.hap.uuid.generate(`${deviceId}:themes`);
     const existingAccessory = this.accessories.get(uuid);
-    const shouldExist = themes.length > 0;
+    // Existing installations retain legacy automation targets unless explicitly disabled.
+    const retainLegacy = this.config.retainLegacyThemeSwitches ?? !!existingAccessory;
+    const shouldExist = themes.length > 0 && (!this.config.themePicker || retainLegacy);
 
     if (!shouldExist) {
       if (existingAccessory) {
@@ -275,6 +330,150 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
 
     this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
     this.accessories.set(accessory.UUID, accessory);
+  }
+
+  public observeControl(deviceId: string, command: string, selectedThemeId?: string) {
+    const matches = this.configuredThemes.get(deviceId)?.filter(item => item.controlData === command) ?? [];
+    const knownId = selectedThemeId ?? this.lastTheme.get(deviceId);
+    // Cloud echoes contain only the command, which can be shared by multiple themes.
+    const theme = matches.find(item => themeFavoriteId(item.id) === knownId)
+      ?? (matches.length === 1 ? matches[0] : undefined);
+    const favorites = this.favoriteAccessories.get(deviceId);
+    if (theme) {
+      this.lastTheme.set(deviceId, themeFavoriteId(theme.id));
+      favorites?.setActiveTheme(themeFavoriteId(theme.id));
+    } else if (/^LEDOFF$/i.test(command)) {
+      favorites?.setActiveTheme(undefined);
+    } else if (/^LEDON$/i.test(command)) {
+      favorites?.setActiveTheme(this.lastTheme.get(deviceId));
+    } else if (!/^BRIGH/i.test(command)) {
+      this.lastTheme.delete(deviceId);
+      favorites?.setActiveTheme(undefined);
+    }
+  }
+
+  public async sendControl(deviceId: string, command: string, selectedThemeId?: string) {
+    if (!isValidDeviceId(deviceId) || !this.apiClient) {
+      throw new Error('Lamp is unavailable');
+    }
+    const pending = this.pendingControls.get(deviceId) ?? 0;
+    if (pending >= 8) {
+      throw new this.api.hap.HapStatusError(this.api.hap.HAPStatus.RESOURCE_BUSY);
+    }
+    const deadline = Date.now() + 8000;
+    const lamp = this.accessoriesByDeviceId.get(deviceId);
+    lamp?.prepareControl(command);
+    this.pendingControls.set(deviceId, pending + 1);
+    const previous = this.controlQueue.get(deviceId) ?? Promise.resolve();
+    const operation = previous.catch(() => {}).then(async () => {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) {
+        throw new Error('Lamp command expired while waiting');
+      }
+      await this.apiClient!.sendControl(deviceId, command, remaining);
+      if (lamp) {
+        lamp.updateFromCloud({ controlData: command }, selectedThemeId);
+      } else {
+        this.observeControl(deviceId, command, selectedThemeId);
+      }
+    });
+    this.controlQueue.set(deviceId, operation);
+    try {
+      await operation;
+    } finally {
+      const count = this.pendingControls.get(deviceId)! - 1;
+      if (count) {
+        this.pendingControls.set(deviceId, count);
+      } else {
+        this.pendingControls.delete(deviceId);
+      }
+      if (this.controlQueue.get(deviceId) === operation) {
+        this.controlQueue.delete(deviceId);
+      }
+    }
+  }
+
+  public async stopTheme(deviceId: string) {
+    await this.sendControl(deviceId, 'LEDOFF');
+  }
+
+  public async applyTheme(deviceId: string, theme: ThemeDefinition) {
+    await this.sendControl(deviceId, theme.controlData, themeFavoriteId(theme.id));
+  }
+
+  private async syncFavoriteControls(deviceId: string, deviceName: string, themes: ThemeDefinition[]) {
+    if (!this.favoriteStore || !isValidDeviceId(deviceId)) {
+      return;
+    }
+    const source = this.accessories.get(this.api.hap.uuid.generate(deviceId))?.getService(this.Service.Lightbulb);
+    if (!source) {
+      return;
+    }
+    let catalog = this.catalogs.get(deviceId);
+    if (!catalog) {
+      catalog = new ThemeCatalogControl(this, source, deviceId);
+      this.catalogs.set(deviceId, catalog);
+    }
+    catalog.update(themes);
+    this.configuredThemes.set(deviceId, themes);
+    let control = this.favoriteControls.get(deviceId);
+    if (!control) {
+      control = new ThemeFavoritesControl(this, source, deviceId, this.favoriteStore, async state => {
+        const currentName = this.accessoriesByDeviceId.get(deviceId)?.getDeviceName() ?? deviceName;
+        const configured = this.configuredThemes.get(deviceId) ?? [];
+        const visible = configured.filter(theme => state.ids.includes(themeFavoriteId(theme.id)));
+        const snapshot = JSON.stringify([currentName, visible]);
+        if (this.favoriteSnapshots.get(deviceId) === snapshot) {
+          return;
+        }
+        if (!visible.length) {
+          this.removeFavoriteAccessory(deviceId);
+          this.favoriteSnapshots.set(deviceId, snapshot);
+          return;
+        }
+        let handler = this.favoriteAccessories.get(deviceId);
+        if (!handler) {
+          const uuid = this.api.hap.uuid.generate(`${deviceId}:theme-favorites`);
+          const accessory = this.accessories.get(uuid)
+            ?? new this.api.platformAccessory(`${currentName} - Favorites`, uuid);
+          accessory.context.device = { deviceId, name: currentName };
+          accessory.context.isFavoriteThemeAccessory = true;
+          handler = new FavoriteThemeAccessory(this, accessory, { deviceId, name: currentName });
+          handler.updateThemes(configured, state.ids);
+          this.favoriteAccessories.set(deviceId, handler);
+          if (!this.accessories.has(uuid)) {
+            this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+            this.accessories.set(uuid, accessory);
+          }
+        } else {
+          handler.updateThemes(configured, state.ids);
+        }
+        const command = this.accessoriesByDeviceId.get(deviceId)?.getLastControl();
+        if (command) {
+          this.observeControl(deviceId, command);
+        }
+        handler.setActiveTheme(source.getCharacteristic(this.Characteristic.On).value
+          ? this.lastTheme.get(deviceId) : undefined);
+        this.api.updatePlatformAccessories([handler.accessory]);
+        this.favoriteSnapshots.set(deviceId, snapshot);
+      });
+      this.favoriteControls.set(deviceId, control);
+    }
+    this.favoriteAccessories.get(deviceId)?.updateDevice({ deviceId, name: deviceName });
+    await control.updateConfiguredIds(themes.map(theme => themeFavoriteId(theme.id)));
+  }
+
+  private removeFavoriteAccessory(deviceId: string) {
+    const handler = this.favoriteAccessories.get(deviceId);
+    const uuid = this.api.hap.uuid.generate(`${deviceId}:theme-favorites`);
+    const accessory = this.accessories.get(uuid);
+    handler?.destroy();
+    if (accessory) {
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+      this.accessories.delete(uuid);
+    }
+    this.favoriteAccessories.delete(deviceId);
+    this.favoriteSnapshots.delete(deviceId);
   }
 
   private removeThemeAccessory(deviceId: string) {

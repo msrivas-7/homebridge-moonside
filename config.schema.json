@@ -52,6 +52,17 @@
         "default": 60,
         "description": "How often the accessory should poll the cloud when polling fallback is enabled."
       },
+      "themePicker": {
+        "title": "Theme Picker and Apple Home Favorites",
+        "type": "boolean",
+        "default": false,
+        "description": "Enable theme browsing in a compatible Homebridge UI. Star configured themes to show them together in an Apple Home Favorites accessory. Existing theme switches remain available for automations."
+      },
+      "retainLegacyThemeSwitches": {
+        "title": "Keep Existing Theme Switches",
+        "type": "boolean",
+        "description": "With the theme picker enabled, existing theme switches are kept for your automations by default. Turn this off to remove the old full-catalog accessory. New setups expose only favorites."
+      },
       "themeSwitches": {
         "title": "Theme Switches",
         "type": "array",

@@ -2,6 +2,7 @@ import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge
 
 import type { MoonsideCloudPlatform, MoonsideDeviceConfig } from './platform.js';
 import type { ThemeDefinition } from './moonsideApi.js';
+import { setThemePickerMetadata } from './themePickerMetadata.js';
 
 export class ThemeSwitchAccessory {
   private readonly services: Map<string, Service> = new Map();
@@ -77,6 +78,7 @@ export class ThemeSwitchAccessory {
   }
 
   private bindThemeService(id: string, service: Service) {
+    setThemePickerMetadata(this.platform, service, this.device.deviceId, id);
     service.getCharacteristic(this.platform.Characteristic.On).onSet(value => {
       const theme = this.themes.find(definition => definition.id === id);
       if (!theme) {
@@ -114,7 +116,11 @@ export class ThemeSwitchAccessory {
     }
 
     try {
-      await this.platform.apiClient.sendControl(this.device.deviceId, theme.controlData);
+      if (this.platform.applyTheme) {
+        await this.platform.applyTheme(this.device.deviceId, theme);
+      } else {
+        await this.platform.apiClient.sendControl(this.device.deviceId, theme.controlData);
+      }
     } catch (error) {
       this.platform.logger.error(
         'Failed to trigger theme %s for %s: %s',

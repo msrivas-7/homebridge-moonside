@@ -1,7 +1,10 @@
+import { THEME_CATALOG_UUID, THEME_SELECTION_UUID } from './themeCatalogControl.js';
 import type { CharacteristicValue, PlatformAccessory, Service } from 'homebridge';
 
 import type { MoonsideCloudPlatform, MoonsideDeviceConfig } from './platform.js';
 import type { DeviceState } from './moonsideApi.js';
+import { THEME_FAVORITES_UUID } from './themeFavoritesControl.js';
+import { setThemePickerMetadata } from './themePickerMetadata.js';
 
 interface RgbColor {
   r: number; // 0-1
@@ -12,6 +15,7 @@ interface RgbColor {
 export class MoonsideLampAccessory {
   private readonly service: Service;
   private cachedState: DeviceState = {};
+  private stateRevision = 0;
   private currentColor: RgbColor = { r: 1, g: 1, b: 1 };
   private targetHue = 0;
   private targetSaturation = 0;
@@ -54,6 +58,23 @@ export class MoonsideLampAccessory {
       .onSet(this.handleSetSaturation.bind(this))
       .onGet(this.handleGetSaturation.bind(this));
 
+    setThemePickerMetadata(this.platform, this.service, device.deviceId);
+    // Cached custom writes must fail until discovery has validated the catalog.
+    for (const characteristic of this.service.characteristics) {
+      if ([THEME_FAVORITES_UUID, THEME_SELECTION_UUID].includes(characteristic.UUID)) {
+        characteristic.onSet(() => {
+          throw new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        });
+      }
+    }
+    if (!this.platform.config.themePicker) {
+      for (const characteristic of [...this.service.characteristics]) {
+        if ([THEME_FAVORITES_UUID, THEME_CATALOG_UUID, THEME_SELECTION_UUID].includes(characteristic.UUID)) {
+          this.service.removeCharacteristic(characteristic);
+        }
+      }
+    }
+
     if (this.initialState) {
       this.updateFromCloud(this.initialState);
     } else {
@@ -66,13 +87,32 @@ export class MoonsideLampAccessory {
 
   }
 
-  public updateFromCloud(update?: DeviceState) {
+  public updateFromCloud(update?: DeviceState, selectedThemeId?: string) {
     if (!update) {
       return;
     }
 
+    this.stateRevision++;
+    if (typeof update.controlData === 'string') {
+      this.platform.observeControl?.(this.device.deviceId, update.controlData, selectedThemeId);
+    } else if (update.on === false) {
+      this.platform.observeControl?.(this.device.deviceId, 'LEDOFF');
+    }
     this.cachedState = { ...this.cachedState, ...update };
     this.applyStateFromCloud(this.cachedState);
+  }
+
+  public prepareControl(command: string) {
+    this.stateRevision++;
+    if (!command.startsWith('COLOR') && this.colorUpdateTimeout) {
+      clearTimeout(this.colorUpdateTimeout);
+      this.colorUpdateTimeout = undefined;
+      this.settleColorPromise(new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.RESOURCE_BUSY));
+    }
+  }
+
+  public getLastControl(): string | undefined {
+    return this.cachedState.controlData;
   }
 
   public getDeviceName(): string {
@@ -95,9 +135,12 @@ export class MoonsideLampAccessory {
       return;
     }
 
+    const revision = this.stateRevision;
     try {
       const state = await this.platform.apiClient.getDeviceState(this.device.deviceId);
-      this.updateFromCloud(state);
+      if (revision === this.stateRevision) {
+        this.updateFromCloud(state);
+      }
     } catch (error) {
       this.platform.logger.warn('Failed to poll %s: %s', this.device.name, error instanceof Error ? error.message : String(error));
     }
@@ -112,6 +155,8 @@ export class MoonsideLampAccessory {
     const on = this.parsePowerState(data);
     const brightness = this.parseBrightness(data);
 
+    // Brightness commands replace controlData, so retain the inferred power state.
+    this.cachedState.on = on;
     this.service.updateCharacteristic(this.platform.Characteristic.On, on);
     this.service.updateCharacteristic(this.platform.Characteristic.Brightness, brightness);
 
@@ -228,7 +273,8 @@ export class MoonsideLampAccessory {
     const command = value ? 'LEDON' : 'LEDOFF';
     this.platform.logger.debug('%s set On -> %s', this.logPrefix(), command);
     try {
-      await this.platform.apiClient.sendControl(this.device.deviceId, command);
+      await this.platform.sendControl(this.device.deviceId, command);
+      this.platform.observeControl?.(this.device.deviceId, command);
       this.cachedState.on = !!value;
       this.service.updateCharacteristic(this.platform.Characteristic.On, this.cachedState.on);
     } catch (error) {
@@ -250,7 +296,7 @@ export class MoonsideLampAccessory {
     this.platform.logger.debug('%s set Brightness -> %d', this.logPrefix(), level);
 
     try {
-      await this.platform.apiClient.sendControl(this.device.deviceId, `BRIGH${level}`);
+      await this.platform.sendControl(this.device.deviceId, `BRIGH${level}`);
       this.cachedState.brightness = level;
       this.service.updateCharacteristic(this.platform.Characteristic.Brightness, level);
     } catch (error) {
@@ -338,7 +384,8 @@ export class MoonsideLampAccessory {
     );
     try {
       const command = this.buildColorCommand(rgb);
-      await this.platform.apiClient.sendControl(this.device.deviceId, command);
+      await this.platform.sendControl(this.device.deviceId, command);
+      this.platform.observeControl?.(this.device.deviceId, command);
       this.currentColor = rgb;
     } catch (error) {
       this.platform.logger.error('Failed to set color for %s: %s', this.device.name, error instanceof Error ? error.message : String(error));

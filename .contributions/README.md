@@ -1,6 +1,11 @@
 # Contribution review
 
-No upstream issue, PR, comment or release has been created.
+Both contributions are published in kylewhirl/homebridge-moonside:
+
+| Change | Issue | PR |
+| --- | --- | --- |
+| Cached theme recovery | [#2](https://github.com/kylewhirl/homebridge-moonside/issues/2) | [#3](https://github.com/kylewhirl/homebridge-moonside/pull/3) |
+| Catalog records | [#4](https://github.com/kylewhirl/homebridge-moonside/issues/4) | [#5](https://github.com/kylewhirl/homebridge-moonside/pull/5) |
 
 ## Separate changes
 
@@ -13,7 +18,7 @@ Both branches start from a658fc4 and work independently. They merge together wit
 
 The repository has no CONTRIBUTING.md. Its bug template asks for a description, reproduction, expected behavior, logs, config and environment. The drafts follow that structure without private data. The only existing issue is #1 about cloud controls; it does not describe these bugs. No matching PR was found. Recheck before posting.
 
-After approval, submit one issue per bug, then link each PR to its issue. Neither PR should claim to fix #1. No issue first requirement was found; separate issues are proposed to keep discussion focused.
+The user authorized one issue followed by its linked PR for each bug. Both pairs are now open with separate branches and concise verification details. Each PR invites feedback; neither claims to fix #1.
 
 ## Verification
 
@@ -26,3 +31,5 @@ The first draft lost a configured alias when the catalog shrank. A failing regre
 Existing bare names still resolve to the last matching record. Catalog title changes can still require updating configured names. These changes do not fetch private community themes or fix Wi-Fi pairing. They were not installed on the live lamp. HAP still emits the plugin's existing ConfiguredName warning during tests.
 
 The checks found no further defect in scope. Live hardware and a full Homebridge 1.8 runtime were not retested for these source branches.
+
+Both PRs target main in kylewhirl/homebridge-moonside and match the verified branch commits. Their issue links and file scopes were checked. GitHub reports no merge conflicts. Build and Lint runs report action_required before any jobs execute; hosted CI and maintainer review remain pending.

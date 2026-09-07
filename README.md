@@ -50,6 +50,8 @@ This plugin talks directly to Moonside’s official Firebase backend, keeps a re
 ### Theme switches
 
 - Each name in `themeSwitches` is looked up in Moonside’s effect catalog. When found, the plugin builds a surge-strip accessory named `<Lamp Name> – Themes` with outlets for every requested effect.
+- Bare theme names ignore capitalization and repeated spaces. When titles match, the last catalog record wins, as before. To select a specific record, use its qualified catalog name: `<title> - <command> [theme:<path hash>]`. The suffix is the SHA-256 hash of the full Firestore document path. It stays the same when other records change.
+- The `[theme:<64 hex digits>]` suffix is reserved for qualified selections. A title ending in that suffix must be selected by its own qualified name, so it cannot take over another theme's saved selection. Root collection themes keep their existing HomeKit service IDs; descendant collection themes use their full path to distinguish repeated document IDs.
 - Flipping an outlet sends the corresponding `THEME.<code>` command and resets to “Off” after one second.
 - If a name can’t be found, the plugin logs a warning but keeps running.
 
@@ -71,7 +73,7 @@ This plugin talks directly to Moonside’s official Firebase backend, keeps a re
 ## Troubleshooting
 
 - **Authentication errors** – Double-check email/password in the config. The plugin logs when it fails to swap refresh tokens.
-- **Theme missing** – Ensure the name exactly matches what the Moonside app shows. Capitalization matters because we match against the cloud catalog.
+- **Theme missing** – Use a catalog name or qualified name in `themeSwitches`. Matching ignores capitalization and repeated spaces. A renamed theme requires updating its configured name.
 - **Accessory mismatch** – Delete the stale accessory from HomeKit and restart Homebridge; the plugin re-registers everything automatically.
 
 Enjoy your Moonside lights with full HomeKit automation! If you build new features or crack the local protocol, feel free to open a PR.

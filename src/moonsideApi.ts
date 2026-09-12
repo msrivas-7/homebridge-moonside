@@ -75,17 +75,20 @@ export class MoonsideApiClient {
     return payload;
   }
 
-  async sendControl(deviceId: string, controlData: string): Promise<DeviceState> {
-    return this.patchDevice(deviceId, { controlData });
+  async sendControl(deviceId: string, controlData: string, timeoutMs = 8000): Promise<DeviceState> {
+    return this.patchDevice(deviceId, { controlData }, timeoutMs);
   }
 
-  async patchDevice(deviceId: string, payload: Record<string, unknown>): Promise<DeviceState> {
-    await this.ensureAuthenticated();
+  async patchDevice(deviceId: string, payload: Record<string, unknown>, timeoutMs = 8000): Promise<DeviceState> {
+    const signal = AbortSignal.timeout(Math.max(1, Math.min(8000, Math.floor(timeoutMs))));
+    await this.ensureAuthenticated(signal);
+    signal.throwIfAborted();
     const url = this.buildDeviceUrl(deviceId);
     const path = this.describeDevicePath(deviceId);
     this.logger.debug('PATCH %s <= %s', path, JSON.stringify(payload));
     const response = await fetch(url, {
       method: 'PATCH',
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
@@ -397,30 +400,32 @@ export class MoonsideApiClient {
     return `userDevices/${this.localId}/${deviceId}`;
   }
 
-  private async ensureAuthenticated() {
+  private async ensureAuthenticated(signal?: AbortSignal) {
     const needsAuth = !this.idToken || Date.now() >= this.tokenExpiry;
     if (!needsAuth) {
       return;
     }
 
     if (!this.refreshToken) {
-      await this.login();
+      await this.login(signal);
       return;
     }
 
     try {
-      await this.refresh();
+      await this.refresh(signal);
     } catch (error) {
+      signal?.throwIfAborted();
       this.logger.warn('Token refresh failed, logging in again.');
-      await this.login();
+      await this.login(signal);
     }
   }
 
-  private async login() {
+  private async login(signal?: AbortSignal) {
     this.logger.info('Authenticating with Moonside cloud as %s', this.email);
     const url = `${FIREBASE_IDENTITY_URL}?key=${this.apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: this.email,
@@ -447,15 +452,16 @@ export class MoonsideApiClient {
     this.tokenExpiry = Date.now() + (parseInt(payload.expiresIn, 10) - 120) * 1000;
   }
 
-  private async refresh() {
+  private async refresh(signal?: AbortSignal) {
     if (!this.refreshToken) {
-      await this.login();
+      await this.login(signal);
       return;
     }
 
     const url = `${FIREBASE_TOKEN_REFRESH_URL}?key=${this.apiKey}`;
     const response = await fetch(url, {
       method: 'POST',
+      signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         grant_type: 'refresh_token',

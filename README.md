@@ -33,7 +33,7 @@ This plugin talks directly to Moonside’s official Firebase backend, keeps a re
 
 ```jsonc
 {
-  "platform": "Moonside",
+  "platform": "MoonsideCloud",
   "name": "Moonside",
   "email": "you@example.com",
   "password": "super-secret",
@@ -55,7 +55,29 @@ This plugin talks directly to Moonside’s official Firebase backend, keeps a re
 - Flipping an outlet sends the corresponding `THEME.<code>` command and resets to “Off” after one second.
 - If a name can’t be found, the plugin logs a warning but keeps running.
 
+### Compact themes and Apple Home favorites
+
+Set `themePicker` to `true` to enable the optional picker protocol. Keep `themeSwitches` as the list of catalog names you want available. Each lamp has its own favorites.
+
+1. Restart Homebridge after saving the configuration.
+2. In a compatible Homebridge UI, open **Controls & themes** on the lamp card.
+3. Search the configured themes and select one to apply it.
+4. Star a theme to add it to that lamp's **Favorites** accessory in Apple Home. Favorites save automatically and are shared across browsers.
+5. Open the Favorites accessory in Apple Home to choose an effect. Only one favorite is active at a time. Turning the active favorite off turns the lamp off. Choosing a normal color clears the theme selection; changing brightness keeps it.
+
+The picker is optional and disabled by default. An older UI continues to control the normal lamp and existing switches. Saved favorite switches also work in Apple Home without the picker UI open. The UI and plugin can therefore be updated in either order; both need protocol support for browsing and editing favorites.
+
+Existing theme switches are retained for automations when enabling the picker. After moving any affected scenes or automations to favorites, explicitly set `retainLegacyThemeSwitches` to `false` to remove the old full theme accessory. New picker setups create no legacy theme accessory by default. This preserves the main lamp and bridge identities; no pairing reset is needed.
+
+Apple Home does not render a custom theme menu inside a Lightbulb. The companion switch accessory provides native control without pretending the lamp is a television. The light's color swatch may still show its last steady color while an effect runs.
+
+Each lamp supports up to 99 favorites, leaving room for HomeKit's accessory information service. Catalog data is limited to 1,000 entries and 128 KiB of encoded data, whichever is reached first. A favorite that temporarily leaves the configured catalog stays saved and returns if that theme becomes available again. Commands are never retried automatically. A cloud acknowledgement confirms delivery to the API, not that the lamp rendered the effect.
+
+Favorite settings are stored under `moonside-theme-favorites` in Homebridge's storage directory. Back up that directory together with `config.json`, `accessories` and `persist` before a migration or rollback.
+
 ## Development
+
+Run `npm run build && npm test` for the simulated accessory, storage, migration and failure tests. They use no vendor account or physical devices.
 
 - `npm run watch` compiles TypeScript and restarts the bundled Homebridge test harness.
 - Set `"logLevel": "debug"` while testing to dump every Firebase payload.

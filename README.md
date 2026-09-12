@@ -103,6 +103,7 @@ Run `npm run build && npm test` for the simulated accessory, storage, migration 
 - [x] Cloud discovery + realtime streaming
 - [x] Stateless theme switchboard
 - [x] Cloud catalog lookup / accessory cleanup
+- [x] Guided shared catalog discovery + per-lamp favorites
 - [ ] LAN / local protocol support
 - [ ] Surface community/shared themes
 - [ ] Auto-discover favorite/custom themes from the Moonside account

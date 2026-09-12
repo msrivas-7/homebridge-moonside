@@ -432,6 +432,15 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     if (!this.favoriteStore || !isValidDeviceId(deviceId)) {
       return;
     }
+    const plan = this.themeSetup?.lamps.find(lamp => lamp.deviceId === deviceId);
+    if (plan && this.themeSetup) {
+      try {
+        await this.favoriteStore.applySetup(deviceId, this.themeSetup.id, plan.ids, plan.expectedRevision,
+          new Set(themes.map(theme => themeFavoriteId(theme.id))));
+      } catch (error) {
+        this.logger.warn('Could not apply saved setup favorites: %s', error instanceof Error ? error.message : String(error));
+      }
+    }
     if (!this.themesEnabledFor(deviceId)) {
       this.removeFavoriteAccessory(deviceId);
       return;
@@ -447,15 +456,6 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     }
     catalog.update(themes);
     this.configuredThemes.set(deviceId, themes);
-    const plan = this.themeSetup?.lamps.find(lamp => lamp.deviceId === deviceId);
-    if (plan && this.themeSetup) {
-      try {
-        await this.favoriteStore.applySetup(deviceId, this.themeSetup.id, plan.ids, plan.expectedRevision,
-          new Set(themes.map(theme => themeFavoriteId(theme.id))));
-      } catch (error) {
-        this.logger.warn('Could not apply saved setup favorites: %s', error instanceof Error ? error.message : String(error));
-      }
-    }
     let control = this.favoriteControls.get(deviceId);
     if (!control) {
       control = new ThemeFavoritesControl(this, source, deviceId, this.favoriteStore, async state => {

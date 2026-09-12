@@ -199,7 +199,7 @@ test('theme-enabled devices use only their own library; unknown devices receive 
     config.lamps = [
       { deviceId: 'a', ids: [themes[0].id], expectedRevision: 0, enabled: true, selectedIds: [themes[0].id] },
       { deviceId: 'b', ids: [themes[1].id], expectedRevision: 0, enabled: true, selectedIds: [themes[1].id, themes[2].id] },
-      { deviceId: 'socket', ids: [], expectedRevision: 0, enabled: false },
+      { deviceId: 'socket', ids: [], expectedRevision: 1, enabled: false },
     ];
     class Accessory extends hap.Accessory {
       context = {};
@@ -217,6 +217,12 @@ test('theme-enabled devices use only their own library; unknown devices receive 
         updatePlatformAccessories() {},
       },
     );
+    const previousSocketFavorite = themes[0].id;
+    await platform.favoriteStore.save(
+      'socket',
+      { version: 1, revision: 0, ids: [previousSocketFavorite] },
+      new Set([previousSocketFavorite]),
+    );
     for (const id of ['a', 'b', 'socket', 'new-device']) {
       await platform.registerOrUpdateAccessory(id, { deviceName: 'Same name', on: false });
       await platform.registerOrUpdateThemeAccessory(id, 'Same name', definitions);
@@ -231,6 +237,7 @@ test('theme-enabled devices use only their own library; unknown devices receive 
         false,
       );
     }
+    assert.deepEqual((await platform.favoriteStore.read('socket')).ids, []);
     // Missing catalog entries retain existing automation services, but no stale command can be sent.
     const favorite = platform.favoriteAccessories.get('a');
     const before = favorite.accessory.services.filter((s) => s.UUID === hap.Service.Switch.UUID).map((s) => s.subtype);

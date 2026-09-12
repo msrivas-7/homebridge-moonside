@@ -2,7 +2,7 @@
   "name": "homebridge-moonside",
   "displayName": "Moonside",
   "type": "module",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "private": false,
   "description": "Homebridge plugin that controls Moonside lamps over the official Firebase cloud API.",
   "author": "Kyle Worrall",

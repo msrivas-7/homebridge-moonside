@@ -1,11 +1,13 @@
+import { createHash } from 'node:crypto';
 import type { PluginLogger } from './logger.js';
 
 const FIREBASE_API_KEY = 'AIzaSyCC-qQZqcZhxqsbO7GB0nXZShab9gV06Bk';
 const FIREBASE_IDENTITY_URL = 'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword';
 const FIREBASE_TOKEN_REFRESH_URL = 'https://securetoken.googleapis.com/v1/token';
 const REALTIME_DATABASE_URL = 'https://moonside-501a1.firebaseio.com';
-const FIRESTORE_RUNQUERY_URL =
-  'https://firestore.googleapis.com/v1/projects/moonside-501a1/databases/(default)/documents:runQuery';
+const FIRESTORE_DOCUMENTS_PATH = 'projects/moonside-501a1/databases/(default)/documents';
+const FIRESTORE_RUNQUERY_URL = `https://firestore.googleapis.com/v1/${FIRESTORE_DOCUMENTS_PATH}:runQuery`;
+const QUALIFIED_THEME_SUFFIX = / \[theme:[a-f0-9]{64}\]$/i;
 
 export interface DeviceState {
   on?: boolean;
@@ -141,7 +143,7 @@ export class MoonsideApiClient {
     }
 
     const payload = await response.json() as Array<{ document?: { name: string; fields?: Record<string, FirestoreField> } }>;
-    const themes = new Map<string, ThemeDefinition>();
+    const definitions = new Map<string, ThemeDefinition>();
 
     for (const entry of payload) {
       const doc = entry.document;
@@ -157,16 +159,46 @@ export class MoonsideApiClient {
 
       const params = this.parseFirestoreArray(doc.fields.themeParams);
       const controlData = this.buildThemeCommand(commandField.stringValue, params);
-      const id = doc.name?.split('/').pop() ?? nameField.stringValue;
+      const path = doc.name;
+      if (!path) {
+        continue;
+      }
+      // Retain existing root collection service IDs; descendants need their full path.
+      const rootPrefix = `${FIRESTORE_DOCUMENTS_PATH}/app-lighting-effects/`;
+      const rootId = path.startsWith(rootPrefix) ? path.slice(rootPrefix.length) : undefined;
+      const id = rootId && !rootId.includes('/') ? rootId : path;
 
-      const def: ThemeDefinition = {
-        id,
-        name: nameField.stringValue,
-        controlData,
-      };
-      themes.set(nameField.stringValue.toLowerCase(), def);
+      const name = nameField.stringValue.trim().replace(/\s+/g, ' ');
+      if (!id || !name) {
+        continue;
+      }
+      definitions.set(path, { id, name, controlData });
     }
 
+    const groups = new Map<string, ThemeDefinition[]>();
+    for (const definition of definitions.values()) {
+      const key = definition.name.toLowerCase();
+      const group = groups.get(key) ?? [];
+      group.push(definition);
+      groups.set(key, group);
+    }
+
+    const themes = new Map<string, ThemeDefinition>();
+    // Preserve existing bare-name lookups, including the last-record rule.
+    for (const [key, group] of groups) {
+      if (!QUALIFIED_THEME_SUFFIX.test(key)) {
+        themes.set(key, group[group.length - 1]);
+      }
+    }
+
+    // Reserve a path-based suffix so titles cannot shadow saved selections,
+    // even when a record is added, removed or has a case-sensitive document ID.
+    for (const [path, definition] of definitions) {
+      const command = definition.controlData.split('.')[1];
+      const identity = createHash('sha256').update(path).digest('hex');
+      const name = `${definition.name} - ${command} [theme:${identity}]`;
+      themes.set(name.toLowerCase(), { ...definition, name });
+    }
     return themes;
   }
 

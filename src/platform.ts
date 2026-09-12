@@ -320,9 +320,11 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
       const selected: ThemeDefinition[] = [];
 
       for (const themeName of this.themeSwitchNames) {
-        const def = library.get(themeName.toLowerCase());
+        const def = library.get(themeName.trim().replace(/\s+/g, ' ').toLowerCase());
         if (def) {
-          selected.push(def);
+          if (!selected.some(theme => theme.id === def.id)) {
+            selected.push(def);
+          }
         } else {
           this.logger.warn('Configured theme "%s" was not found in the Moonside catalog.', themeName);
         }

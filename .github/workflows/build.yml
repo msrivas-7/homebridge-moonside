@@ -25,8 +25,8 @@ jobs:
       - name: Lint the project
         run: npm run lint
 
-      - name: Build the project
-        run: npm run build
+      - name: Build and run regression tests
+        run: npm test
 
       - name: List, audit, fix outdated dependencies and build again
         run: |

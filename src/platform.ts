@@ -102,7 +102,7 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
         deviceId: accessory.context.device.deviceId,
         name: accessory.context.device.name ?? accessory.displayName.replace(/ - Themes$/, ''),
       };
-      const handler = new ThemeSwitchAccessory(this, accessory, device, []);
+      const handler = new ThemeSwitchAccessory(this, accessory, device);
       this.themeAccessories.set(device.deviceId, handler);
     }
 
@@ -189,11 +189,11 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
         await this.registerOrUpdateThemeAccessory(
           deviceId,
           handler.getDeviceName(),
-          this.themeDefinitionsCache ?? [],
+          this.themeDefinitionsCache,
         );
       } else {
         const deviceName = await this.registerOrUpdateAccessory(deviceId, update);
-        await this.registerOrUpdateThemeAccessory(deviceId, deviceName, this.themeDefinitionsCache ?? []);
+        await this.registerOrUpdateThemeAccessory(deviceId, deviceName, this.themeDefinitionsCache);
       }
     }, (error) => {
       this.logger.warn('Moonside realtime stream warning: %s', error instanceof Error ? error.message : String(error));
@@ -206,7 +206,7 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     });
   }
 
-  private async syncDeviceSnapshot(devices: Map<string, DeviceState>, themeDefinitions: ThemeDefinition[]) {
+  private async syncDeviceSnapshot(devices: Map<string, DeviceState>, themeDefinitions: ThemeDefinition[] | undefined) {
     const seenDeviceIds: string[] = [];
 
     for (const [deviceId, state] of devices.entries()) {
@@ -235,7 +235,11 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     await this.syncDeviceSnapshot(devices, themeDefinitions);
   }
 
-  private async registerOrUpdateThemeAccessory(deviceId: string, deviceName: string, themes: ThemeDefinition[]) {
+  private async registerOrUpdateThemeAccessory(deviceId: string, deviceName: string, themes: ThemeDefinition[] | undefined) {
+    // A failed catalog request is not an empty catalog. Preserve cached services.
+    if (themes === undefined) {
+      return;
+    }
     const uuid = this.api.hap.uuid.generate(`${deviceId}:themes`);
     const existingAccessory = this.accessories.get(uuid);
     const shouldExist = themes.length > 0;
@@ -300,7 +304,7 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     }
   }
 
-  private async resolveThemeDefinitions(): Promise<ThemeDefinition[]> {
+  private async resolveThemeDefinitions(): Promise<ThemeDefinition[] | undefined> {
     if (!this.apiClient || !this.themeSwitchNames.length) {
       this.themeDefinitionsCache = [];
       this.refreshThemeAccessories([]);
@@ -332,7 +336,7 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
         'Failed to load theme catalog: %s',
         error instanceof Error ? error.message : String(error),
       );
-      return [];
+      return undefined;
     }
   }
 

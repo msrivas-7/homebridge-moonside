@@ -29,7 +29,8 @@
     "build": "rimraf ./dist && tsc",
     "lint": "eslint . --max-warnings=0",
     "prepublishOnly": "npm run lint && npm run build",
-    "watch": "npm run build && npm link && nodemon"
+    "watch": "npm run build && npm link && nodemon",
+    "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {},
   "devDependencies": {

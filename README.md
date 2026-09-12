@@ -47,6 +47,21 @@ This plugin talks directly to Moonside’s official Firebase backend, keeps a re
 }
 ```
 
+### Guided theme setup
+
+Open the plugin settings in Homebridge UI and choose **Discover devices and themes**.
+
+1. Sign in with your Moonside app account. Discovery reads account devices and the shared theme catalog without changing any lights.
+2. Select your library, or select all themes. You can also include new catalog themes after each restart.
+3. For each device that supports themes in the Moonside app, enable themes, keep the shared library or choose a smaller one, and select Apple Home favorites. Devices have independent choices, even when their names match.
+4. Review and save, then restart Homebridge when convenient. Favorites appear in a separate accessory for each lamp. Only one theme can be active on a lamp; selecting a normal color clears its active theme.
+
+Theme support is an explicit choice because the shared catalog does not report compatibility by model. New devices start with themes disabled. This flow does not add support for non-lighting products, or discover saved custom and community themes. Those API capabilities have not been established.
+
+Existing manual theme switches and unrelated settings are preserved. Temporarily unavailable themes and devices retain saved choices. A missing theme cannot be added as a new favorite or sent using an old command. Settings and favorites are checked again before saving so an older setup does not overwrite newer edits.
+
+The compact picker on the Homebridge Accessories page requires a UI version with theme picker support. Guided plugin settings and native Apple Home favorites do not require that picker interface.
+
 ### Theme switches
 
 - Each name in `themeSwitches` is looked up in Moonside’s effect catalog. When found, the plugin builds a surge-strip accessory named `<Lamp Name> – Themes` with outlets for every requested effect.

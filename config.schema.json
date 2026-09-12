@@ -33,9 +33,18 @@
         "type": "string",
         "default": "warning",
         "oneOf": [
-          { "title": "Debug", "const": "debug" },
-          { "title": "Warnings Only", "const": "warning" },
-          { "title": "Errors Only", "const": "none" }
+          {
+            "title": "Debug",
+            "const": "debug"
+          },
+          {
+            "title": "Warnings Only",
+            "const": "warning"
+          },
+          {
+            "title": "Errors Only",
+            "const": "none"
+          }
         ],
         "description": "Controls how chatty the plugin logs should be. Debug will also show every realtime update payload."
       },
@@ -70,7 +79,112 @@
           "type": "string"
         },
         "description": "Optional list of theme names that should appear as stateless switches on each lamp. The plugin will match the names against the official catalog (e.g., \"Dancing Ocean\")."
+      },
+      "themeSetup": {
+        "title": "Theme Setup",
+        "description": "Managed by guided theme setup. Existing manual theme switches remain independent.",
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "integer",
+            "const": 1
+          },
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "selected",
+              "all"
+            ]
+          },
+          "selectedIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 1000
+          },
+          "lamps": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "object",
+              "properties": {
+                "deviceId": {
+                  "type": "string"
+                },
+                "ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 99
+                },
+                "expectedRevision": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "selectedIds": {
+                  "type": "array",
+                  "maxItems": 1000,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "deviceId",
+                "ids",
+                "expectedRevision"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "version",
+          "id",
+          "mode",
+          "selectedIds",
+          "lamps"
+        ],
+        "additionalProperties": false
       }
     }
-  }
+  },
+  "customUi": true,
+  "layout": [
+    {
+      "key": "name"
+    },
+    {
+      "key": "email"
+    },
+    {
+      "key": "password"
+    },
+    {
+      "key": "logLevel"
+    },
+    {
+      "key": "enablePolling"
+    },
+    {
+      "key": "pollingInterval"
+    },
+    {
+      "key": "themePicker"
+    },
+    {
+      "key": "retainLegacyThemeSwitches"
+    },
+    {
+      "key": "themeSwitches"
+    }
+  ]
 }

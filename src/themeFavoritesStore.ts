@@ -9,6 +9,7 @@ export interface ThemeFavoritesState {
   version: 1;
   revision: number;
   ids: string[];
+  setupId?: string;
 }
 
 export function validateFavorites(value: unknown): ThemeFavoritesState {
@@ -16,10 +17,11 @@ export function validateFavorites(value: unknown): ThemeFavoritesState {
   if (!state || state.version !== 1 || !Number.isSafeInteger(state.revision) || state.revision! < 0
     || !Array.isArray(state.ids) || state.ids.length > MAX_THEME_FAVORITES
     || state.ids.some(id => typeof id !== 'string' || !/^[a-f\d]{64}$/.test(id))
+    || (state.setupId !== undefined && (typeof state.setupId !== 'string' || !/^[a-f\d-]{36}$/.test(state.setupId)))
     || new Set(state.ids).size !== state.ids.length) {
     throw new Error('Invalid theme favorites');
   }
-  return { version: 1, revision: state.revision!, ids: [...state.ids] };
+  return { version: 1, revision: state.revision!, ids: [...state.ids], ...(state.setupId ? { setupId: state.setupId } : {}) };
 }
 
 /** One store instance per platform serializes changes without exposing device identifiers in filenames. */
@@ -45,7 +47,19 @@ export class ThemeFavoritesStore {
     }
   }
 
-  save(deviceId: string, expected: ThemeFavoritesState, configuredIds: ReadonlySet<string>): Promise<ThemeFavoritesState> {
+  async applySetup(deviceId: string, setupId: string, ids: string[], expectedRevision: number, configuredIds: ReadonlySet<string>) {
+    const current = await this.read(deviceId);
+    if (current.setupId === setupId) {
+      return current;
+    }
+    // A newer picker edit wins over an older onboarding snapshot.
+    if (current.revision !== expectedRevision) {
+      throw new Error('Favorites changed since setup. Reopen plugin settings to review them.');
+    }
+    return this.save(deviceId, { version: 1, ids, revision: expectedRevision }, configuredIds, setupId);
+  }
+
+  save(deviceId: string, expected: ThemeFavoritesState, configuredIds: ReadonlySet<string>, setupId?: string): Promise<ThemeFavoritesState> {
     const input = validateFavorites(expected);
     const action = this.pending.then(async () => {
       const current = await this.read(deviceId);
@@ -59,7 +73,8 @@ export class ThemeFavoritesStore {
       if (current.revision === Number.MAX_SAFE_INTEGER) {
         throw new Error('Favorites revision limit reached');
       }
-      const next: ThemeFavoritesState = { version: 1, revision: current.revision + 1, ids: [...input.ids] };
+      const next: ThemeFavoritesState = { version: 1, revision: current.revision + 1, ids: [...input.ids],
+        ...((setupId ?? current.setupId) ? { setupId: setupId ?? current.setupId } : {}) };
       await mkdir(this.directory, { recursive: true, mode: 0o700 });
       const target = this.path(deviceId);
       const temporary = `${target}.${randomUUID()}.tmp`;

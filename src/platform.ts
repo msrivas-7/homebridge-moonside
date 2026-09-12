@@ -1,3 +1,4 @@
+import { catalogChoices, validateThemeSetup, type ThemeSetup } from './themeOnboarding.js';
 import { ThemeCatalogControl } from './themeCatalogControl.js';
 import { join } from 'node:path';
 import { FavoriteThemeAccessory, themeFavoriteId } from './favoriteThemeAccessory.js';
@@ -26,6 +27,7 @@ export interface MoonsidePlatformConfig extends PlatformConfig {
   logLevel?: PluginLogLevel;
   themeSwitches?: string[];
   themePicker?: boolean;
+  themeSetup?: ThemeSetup;
   retainLegacyThemeSwitches?: boolean;
 }
 
@@ -48,6 +50,8 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
   private readonly configured: boolean;
   private readonly accessoriesByDeviceId: Map<string, MoonsideLampAccessory> = new Map();
   private readonly themeAccessories: Map<string, ThemeSwitchAccessory> = new Map();
+  private themeSetup?: ThemeSetup;
+  private legacyDefinitions: ThemeDefinition[] = [];
   private readonly themeSwitchNames: string[];
   private favoriteAccessories = new Map<string, FavoriteThemeAccessory>();
   private favoriteControls = new Map<string, ThemeFavoritesControl>();
@@ -73,6 +77,17 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     this.Characteristic = api.hap.Characteristic;
     this.logger = new PluginLogger(log, this.resolveLogLevel(config.logLevel));
 
+    if (config.themeSetup) {
+      try {
+        if (!config.themePicker) {
+          throw new Error('Theme setup requires the theme picker.');
+        }
+        this.themeSetup = validateThemeSetup(config.themeSetup);
+      } catch (error) {
+        this.logger.error('%s', error instanceof Error ? error.message : String(error));
+      }
+    }
+
     this.pollingInterval = Math.max(5, config.pollingInterval ?? 60) * 1000;
     this.enablePolling = config.enablePolling ?? false;
     this.themeSwitchNames = (config.themeSwitches ?? []).map(name => name.trim()).filter(name => !!name);
@@ -97,11 +112,10 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     // to start discovery of new accessories.
     this.api.on('didFinishLaunching', () => {
       this.logger.debug('Executed didFinishLaunching callback');
-      if (!this.config.themePicker) {
-        for (const accessory of this.accessories.values()) {
-          if (accessory.context?.isFavoriteThemeAccessory) {
-            this.removeFavoriteAccessory(accessory.context.device.deviceId);
-          }
+      for (const accessory of this.accessories.values()) {
+        if (accessory.context?.isFavoriteThemeAccessory
+          && !this.themesEnabledFor(accessory.context.device?.deviceId)) {
+          this.removeFavoriteAccessory(accessory.context.device.deviceId);
         }
       }
       void this.discoverDevices();
@@ -287,11 +301,19 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
       return;
     }
     try {
-      await this.syncFavoriteControls(deviceId, deviceName, themes);
+      const plan = this.themeSetup?.lamps.find(lamp => lamp.deviceId === deviceId);
+      const wanted = this.themeSetup && this.themeSetup.mode !== 'all'
+        ? new Set(plan?.selectedIds ?? this.themeSetup.selectedIds)
+        : plan?.selectedIds ? new Set(plan.selectedIds) : undefined;
+      const deviceThemes = wanted ? themes.filter(theme => wanted.has(themeFavoriteId(theme.id))) : themes;
+      await this.syncFavoriteControls(deviceId, deviceName, deviceThemes);
     } catch (error) {
       // Keep ordinary controls, cached favorites and other lamps available while settings recover.
       this.logger.error('Failed to update theme favorites for %s: %s', deviceName,
         error instanceof Error ? error.message : String(error));
+    }
+    if (this.themeSetup) {
+      themes = this.legacyDefinitions;
     }
     const uuid = this.api.hap.uuid.generate(`${deviceId}:themes`);
     const existingAccessory = this.accessories.get(uuid);
@@ -393,6 +415,11 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     }
   }
 
+  public themesEnabledFor(deviceId: string) {
+    return !!this.config.themePicker && (!this.themeSetup
+      || this.themeSetup.lamps.some(lamp => lamp.deviceId === deviceId && lamp.enabled !== false));
+  }
+
   public async stopTheme(deviceId: string) {
     await this.sendControl(deviceId, 'LEDOFF');
   }
@@ -403,6 +430,10 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
 
   private async syncFavoriteControls(deviceId: string, deviceName: string, themes: ThemeDefinition[]) {
     if (!this.favoriteStore || !isValidDeviceId(deviceId)) {
+      return;
+    }
+    if (!this.themesEnabledFor(deviceId)) {
+      this.removeFavoriteAccessory(deviceId);
       return;
     }
     const source = this.accessories.get(this.api.hap.uuid.generate(deviceId))?.getService(this.Service.Lightbulb);
@@ -416,17 +447,26 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     }
     catalog.update(themes);
     this.configuredThemes.set(deviceId, themes);
+    const plan = this.themeSetup?.lamps.find(lamp => lamp.deviceId === deviceId);
+    if (plan && this.themeSetup) {
+      try {
+        await this.favoriteStore.applySetup(deviceId, this.themeSetup.id, plan.ids, plan.expectedRevision,
+          new Set(themes.map(theme => themeFavoriteId(theme.id))));
+      } catch (error) {
+        this.logger.warn('Could not apply saved setup favorites: %s', error instanceof Error ? error.message : String(error));
+      }
+    }
     let control = this.favoriteControls.get(deviceId);
     if (!control) {
       control = new ThemeFavoritesControl(this, source, deviceId, this.favoriteStore, async state => {
         const currentName = this.accessoriesByDeviceId.get(deviceId)?.getDeviceName() ?? deviceName;
         const configured = this.configuredThemes.get(deviceId) ?? [];
         const visible = configured.filter(theme => state.ids.includes(themeFavoriteId(theme.id)));
-        const snapshot = JSON.stringify([currentName, visible]);
+        const snapshot = JSON.stringify([currentName, state.ids, visible]);
         if (this.favoriteSnapshots.get(deviceId) === snapshot) {
           return;
         }
-        if (!visible.length) {
+        if (!state.ids.length) {
           this.removeFavoriteAccessory(deviceId);
           this.favoriteSnapshots.set(deviceId, snapshot);
           return;
@@ -504,7 +544,7 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
   }
 
   private async resolveThemeDefinitions(): Promise<ThemeDefinition[] | undefined> {
-    if (!this.apiClient || !this.themeSwitchNames.length) {
+    if (!this.apiClient || (!this.themeSwitchNames.length && !this.themeSetup)) {
       this.themeDefinitionsCache = [];
       this.refreshThemeAccessories([]);
       return [];
@@ -515,7 +555,7 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
     }
 
     try {
-      const library = await this.apiClient.fetchThemeLibrary();
+      const library = await this.apiClient.fetchThemeLibrary(undefined, { qualifiedLabels: !this.themeSetup });
       const selected: ThemeDefinition[] = [];
 
       for (const themeName of this.themeSwitchNames) {
@@ -529,9 +569,22 @@ export class MoonsideCloudPlatform implements DynamicPlatformPlugin {
         }
       }
 
-      this.themeDefinitionsCache = selected;
+      this.legacyDefinitions = selected;
+      if (this.themeSetup) {
+        const choices = catalogChoices(library);
+        const wanted = new Set(this.themeSetup.mode === 'all' ? choices.map(theme => theme.id) : this.themeSetup.selectedIds);
+        for (const plan of this.themeSetup.lamps) {
+          if (plan.enabled !== false) {
+            plan.selectedIds?.forEach(id => wanted.add(id));
+          }
+        }
+        const unique = new Map([...library.values()].map(theme => [themeFavoriteId(theme.id), theme]));
+        this.themeDefinitionsCache = [...unique].filter(([id]) => wanted.has(id)).map(([, theme]) => theme);
+      } else {
+        this.themeDefinitionsCache = selected;
+      }
       this.refreshThemeAccessories(selected);
-      return selected;
+      return this.themeDefinitionsCache;
     } catch (error) {
       this.logger.error(
         'Failed to load theme catalog: %s',
